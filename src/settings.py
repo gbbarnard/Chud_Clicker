@@ -21,6 +21,11 @@ BUTTON_DISABLED = (145, 164, 184)
 BUTTON_BG = BLUE
 UPGRADE_OWNED = (60, 160, 90)
 
+# Added from second file
+UPGRADE_LOCKED_BG = (228, 190, 190)
+UPGRADE_LOCKED_TEXT = (120, 45, 45)
+UPGRADE_LOCKED_BUTTON = (176, 110, 110)
+
 # UI Settings
 POST_BUTTON_WIDTH = 200
 POST_BUTTON_HEIGHT = 50
@@ -29,7 +34,7 @@ FONT_SIZE = 36
 # Screen Division Logic
 THIRD_WIDTH = SCREEN_WIDTH // 3
 
-# Column X-coordinates maY NOT NEED 
+# Column X-coordinates maY NOT NEED
 # LEFT_COLUMN_X = 0
 # CENTER_COLUMN_X = THIRD_WIDTH
 # RIGHT_COLUMN_X = THIRD_WIDTH * 2
@@ -46,14 +51,15 @@ CENTER_COL_WIDTH = SCREEN_WIDTH - (LEFT_COL_WIDTH + RIGHT_COL_WIDTH)
 LEFT_COLUMN_X = 0
 CENTER_COLUMN_X = LEFT_COL_WIDTH
 RIGHT_COLUMN_X = LEFT_COL_WIDTH + CENTER_COL_WIDTH
+
 # --- Dynamic Column Logic ---
 # We use a function so we can call it whenever the window size changes
 def get_column_layout(current_width):
     # You can keep these fixed, or make them percentages
-    left_w = 300  
+    left_w = 300
     right_w = 400
     center_w = current_width - (left_w + right_w)
-    
+
     # Return a dictionary of coordinates and widths
     return {
         "left_x": 0,

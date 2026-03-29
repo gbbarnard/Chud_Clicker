@@ -1,4 +1,6 @@
 import os
+import random
+import time
 import pygame
 import settings
 from maths import (
@@ -9,34 +11,98 @@ from maths import (
     buy_building,
     buy_upgrade,
     get_building_cost,
+    get_upgrade_cost,
+    get_upgrade_required_building,
+    is_upgrade_unlocked,
     update_game,
+    COIN_OPTIONS,
+    process_coin_bet,
+    get_speed_click_cost,
+    process_speed_click_hit,
+    start_speed_click_session,
+    SPEED_CLICK_COOLDOWN,
+    format_chud_amount,
 )
+
+
+class Toggle:
+    def __init__(self, x, y, width, height, options):
+        self.rect = pygame.Rect(x, y, width, height)
+        self.options = options
+        self.index = 0
+
+    def update_pos(self, x, y):
+        self.rect.topleft = (x, y)
+
+    def draw(self, surface, font, active_color):
+        pygame.draw.rect(surface, (100, 100, 100), self.rect, border_radius=8)
+        half_w = self.rect.width // 2
+        toggle_rect = pygame.Rect(
+            self.rect.x + (self.index * half_w),
+            self.rect.y,
+            half_w,
+            self.rect.height,
+        )
+        pygame.draw.rect(surface, active_color, toggle_rect, border_radius=8)
+
+        for i, opt in enumerate(self.options):
+            text = font.render(opt, True, (255, 255, 255))
+            text_rect = text.get_rect(
+                center=(
+                    self.rect.x + (i * half_w) + half_w // 2,
+                    self.rect.centery,
+                )
+            )
+            surface.blit(text, text_rect)
+
+    def handle_event(self, event):
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if self.rect.collidepoint(event.pos):
+                self.index = 1 - self.index
+        return self.options[self.index]
 
 
 class MenuManager:
     def __init__(self):
-        # Use one shared game state only.
         self.game = GameState()
 
+        self.active_minigame = "coin_flip"
+        self.coin_idx = 0
+        self.bet_result_text = "Ready to flip?"
+
+        # Speed Clicker State
+        self.speed_active = False
+        self.speed_cooldown_end = 0
+        self.speed_targets_hit = 0
+        self.speed_max_targets = 15
+        self.speed_current_target = None
+        self.speed_target_spawn_time = 0
+        self.speed_target_lifetime = 1500  # ms
+        self.speed_round_start_time = 0
+        self.speed_msg = "Ready?"
+
+        self.side_toggle = Toggle(0, 0, 140, 30, ["Heads", "Tails"])
+        self.range_toggle = Toggle(0, 0, 140, 30, ["Over", "Under"])
+
         self.building_order = list(BUILDINGS.keys())
-        self.upgrade_order = list(UPGRADES.keys())
+        self.upgrade_order = self._build_upgrade_order()
 
-        base_font_size = getattr(settings, "FONT_SIZE", 24)
-        self.title_font = pygame.font.SysFont("Arial", 34)
-        self.section_font = pygame.font.SysFont("Arial", 28)
-        self.body_font = pygame.font.SysFont("Arial", 22)
-        self.small_font = pygame.font.SysFont("Arial", 18)
-        self.button_font = pygame.font.SysFont("Arial", 20)
-        self.font = pygame.font.SysFont("Arial", base_font_size)
-        self.font_small = pygame.font.SysFont("Arial", 18)
+        self.title_font = None
+        self.section_font = None
+        self.body_font = None
+        self.small_font = None
+        self.button_font = None
+        self.font_small = None
 
+        self.button_source_image = None
         self.button_image = None
         self.hovered_building_id = None
+        self.hovered_upgrade_id = None
 
         self._load_assets()
         self.update_layout(
-            getattr(settings, "SCREEN_WIDTH", 1200),
-            getattr(settings, "SCREEN_HEIGHT", 700),
+            getattr(settings, "SCREEN_WIDTH", 1280),
+            getattr(settings, "SCREEN_HEIGHT", 720),
         )
 
     def _load_assets(self):
@@ -48,40 +114,84 @@ class MenuManager:
         )
 
         if os.path.exists(image_path):
-            image = pygame.image.load(image_path).convert_alpha()
-            post_w = getattr(settings, "POST_BUTTON_WIDTH", 260)
-            post_h = getattr(settings, "POST_BUTTON_HEIGHT", 160)
-            self.button_image = pygame.transform.smoothscale(image, (post_w, post_h))
+            self.button_source_image = pygame.image.load(image_path).convert_alpha()
+
+    def _build_upgrade_order(self):
+        building_index = {
+            building_id: idx for idx, building_id in enumerate(self.building_order)
+        }
+
+        def sort_key(upgrade_id):
+            upgrade = UPGRADES[upgrade_id]
+            required_building = get_upgrade_required_building(upgrade_id)
+            if required_building in building_index:
+                return (
+                    0,
+                    building_index[required_building],
+                    upgrade.get("name", upgrade_id).lower(),
+                )
+            return (1, len(building_index), upgrade.get("name", upgrade_id).lower())
+
+        return sorted(UPGRADES.keys(), key=sort_key)
 
     def update_layout(self, width, height):
         self.screen_width = width
         self.screen_height = height
 
-        outer_margin = getattr(settings, "OUTER_MARGIN", 12)
-        panel_gap = getattr(settings, "PANEL_GAP", 0)
+        outer_margin = max(8, width // 100)
+        panel_gap = max(8, width // 90)
+        vertical_gap = max(8, height // 70)
+        card_gap = max(6, height // 110)
 
-        left_w = min(getattr(settings, "LEFT_PANEL_WIDTH", 260), max(200, width // 3))
-        right_w = min(getattr(settings, "RIGHT_PANEL_WIDTH", 260), max(200, width // 3))
-        right_top_h = getattr(settings, "RIGHT_TOP_HEIGHT", max(220, height // 2 - outer_margin))
-        card_gap = getattr(settings, "CARD_GAP", 0)
+        self.title_font = pygame.font.SysFont("Arial", max(22, min(38, width // 32)))
+        self.section_font = pygame.font.SysFont("Arial", max(18, min(30, width // 42)))
+        self.body_font = pygame.font.SysFont("Arial", max(14, min(24, width // 52)))
+        self.small_font = pygame.font.SysFont("Arial", max(12, min(18, width // 75)))
+        self.button_font = pygame.font.SysFont("Arial", max(13, min(20, width // 65)))
+        self.font_small = pygame.font.SysFont("Arial", max(12, min(18, width // 75)))
 
         content_h = height - (outer_margin * 2)
+
+        left_w = max(180, int(width * 0.22))
+        right_w = max(220, int(width * 0.24))
         center_w = width - (outer_margin * 2) - left_w - right_w - (panel_gap * 2)
-        center_w = max(260, center_w)
+
+        if center_w < 280:
+            shrink_needed = 280 - center_w
+            left_w = max(150, left_w - shrink_needed // 2)
+            right_w = max(180, right_w - shrink_needed // 2)
+            center_w = width - (outer_margin * 2) - left_w - right_w - (panel_gap * 2)
+
+        top_h = int((content_h - vertical_gap) * 0.62)
+        bottom_h = content_h - top_h - vertical_gap
 
         self.left_panel = pygame.Rect(outer_margin, outer_margin, left_w, content_h)
-        self.center_panel = pygame.Rect(self.left_panel.right + panel_gap, outer_margin, center_w, content_h)
-        self.right_panel_top = pygame.Rect(self.center_panel.right + panel_gap, outer_margin, right_w, min(right_top_h, content_h))
+        self.center_panel = pygame.Rect(
+            self.left_panel.right + panel_gap,
+            outer_margin,
+            center_w,
+            content_h,
+        )
+        self.right_panel_top = pygame.Rect(
+            self.center_panel.right + panel_gap,
+            outer_margin,
+            right_w,
+            top_h,
+        )
         self.right_panel_bottom = pygame.Rect(
             self.center_panel.right + panel_gap,
-            self.right_panel_top.bottom,
+            self.right_panel_top.bottom + vertical_gap,
             right_w,
-            height - outer_margin - self.right_panel_top.bottom,
+            bottom_h,
         )
 
-        # Aliases for compatibility with the older main/menu code.
         self.left_panel_rect = self.left_panel
-        self.right_panel_rect = pygame.Rect(self.right_panel_top.x, self.right_panel_top.y, right_w, content_h)
+        self.right_panel_rect = pygame.Rect(
+            self.right_panel_top.x,
+            self.right_panel_top.y,
+            right_w,
+            content_h,
+        )
         self.right_top_half = self.right_panel_top
         self.right_bottom_half = self.right_panel_bottom
         self.layout = {
@@ -89,15 +199,13 @@ class MenuManager:
             "right_x": self.right_panel_top.x,
         }
 
-        # Building cards on the left.
         self.building_cards = {}
-        self.building_buy_buttons = {}
         self.left_bars = []
 
-        visible_slots = max(4, len(self.building_order))
-        available_h = self.left_panel.height
-        card_h = max(100, (available_h - (card_gap * (visible_slots - 1))) // visible_slots)
-        card_h = min(card_h, getattr(settings, "SIDEBAR_CARD_HEIGHT", 130))
+        building_slots = len(self.building_order) + 1
+        building_available_h = self.left_panel.height
+        card_h = (building_available_h - (card_gap * (building_slots - 1))) // building_slots
+        card_h = max(72, min(card_h, 125))
 
         for idx, building_id in enumerate(self.building_order):
             rect = pygame.Rect(
@@ -108,7 +216,6 @@ class MenuManager:
             )
             self.building_cards[building_id] = rect
             self.left_bars.append(rect)
-            self.building_buy_buttons[building_id] = pygame.Rect(rect.right - 96, rect.bottom - 42, 82, 28)
 
         self.empty_building_card = pygame.Rect(
             self.left_panel.x,
@@ -117,11 +224,17 @@ class MenuManager:
             card_h,
         )
 
-        # Center click area.
-        post_w = getattr(settings, "POST_BUTTON_WIDTH", 260)
-        post_h = getattr(settings, "POST_BUTTON_HEIGHT", 160)
+        base_post_w = getattr(settings, "POST_BUTTON_WIDTH", 260)
+        base_post_h = getattr(settings, "POST_BUTTON_HEIGHT", 160)
+        aspect_ratio = base_post_h / base_post_w
+
+        post_w = min(int(self.center_panel.width * 0.55), 320)
+        post_w = max(170, post_w)
+        post_h = int(post_w * aspect_ratio)
+
         center_click_w = post_w + 100
-        center_click_h = post_h + 120
+        center_click_h = post_h + 130
+
         self.click_area = pygame.Rect(0, 0, center_click_w, center_click_h)
         self.click_area.center = self.center_panel.center
 
@@ -130,70 +243,204 @@ class MenuManager:
         self.click_button_rect.y = self.click_area.y + 70
         self.post_button_rect = self.click_button_rect
 
-        # Optional right-side button alias from the older version.
-        self.right_button_rect = pygame.Rect(
-            self.right_panel_bottom.x + 20,
-            self.right_panel_bottom.y + 70,
-            max(120, self.right_panel_bottom.width - 40),
-            48,
-        )
+        if self.button_source_image:
+            self.button_image = pygame.transform.smoothscale(
+                self.button_source_image,
+                (post_w, post_h),
+            )
 
-        # Upgrade cards on the right.
         self.upgrade_cards = {}
-        self.upgrade_buy_buttons = {}
-        upgrade_card_h = getattr(settings, "UPGRADE_CARD_HEIGHT", 62)
-        upgrade_x = self.right_panel_top.x + 12
-        upgrade_y = self.right_panel_top.y + 56
-        upgrade_w = self.right_panel_top.width - 24
+
+        inner_pad = max(8, self.right_panel_top.width // 22)
+        title_space = self.title_font.get_height() + 26
+        upgrade_gap = max(6, height // 120)
+
+        upgrade_x = self.right_panel_top.x + inner_pad
+        upgrade_y = self.right_panel_top.y + title_space
+        upgrade_w = self.right_panel_top.width - (inner_pad * 2)
+
+        slots = max(1, len(self.upgrade_order))
+        available_h = self.right_panel_top.height - title_space - inner_pad
+        upgrade_card_h = (available_h - (upgrade_gap * (slots - 1))) // slots
+        upgrade_card_h = max(42, min(upgrade_card_h, 84))
 
         for idx, upgrade_id in enumerate(self.upgrade_order):
             rect = pygame.Rect(
                 upgrade_x,
-                upgrade_y + idx * (upgrade_card_h + 10),
+                upgrade_y + idx * (upgrade_card_h + upgrade_gap),
                 upgrade_w,
                 upgrade_card_h,
             )
             self.upgrade_cards[upgrade_id] = rect
-            self.upgrade_buy_buttons[upgrade_id] = pygame.Rect(rect.right - 68, rect.centery - 14, 56, 28)
+
+        # Mini-game layout
+        switcher_w = min(
+            getattr(settings, "MINIGAME_SWITCHER_WIDTH", 50),
+            max(40, self.right_panel_bottom.width // 3),
+        )
+        self.minigame_switcher_rect = pygame.Rect(
+            self.right_panel_bottom.x,
+            self.right_panel_bottom.y,
+            switcher_w,
+            self.right_panel_bottom.height,
+        )
+        self.minigame_content_rect = pygame.Rect(
+            self.minigame_switcher_rect.right,
+            self.right_panel_bottom.y,
+            self.right_panel_bottom.width - switcher_w,
+            self.right_panel_bottom.height,
+        )
+
+        tab_margin = 6
+        tab_w = max(28, switcher_w - tab_margin * 2)
+        tab_h = 40
+        self.btn_flip_tab = pygame.Rect(
+            self.minigame_switcher_rect.x + tab_margin,
+            self.minigame_switcher_rect.y + 10,
+            tab_w,
+            tab_h,
+        )
+        self.btn_speed_tab = pygame.Rect(
+            self.minigame_switcher_rect.x + tab_margin,
+            self.minigame_switcher_rect.y + 60,
+            tab_w,
+            tab_h,
+        )
+
+        content = self.minigame_content_rect
+        toggle_w = min(140, max(100, content.width - 30))
+        self.side_toggle.rect.size = (toggle_w, 30)
+        self.range_toggle.rect.size = (toggle_w, 30)
+        self.side_toggle.update_pos(content.x + 15, content.y + 100)
+        self.range_toggle.update_pos(content.x + 15, content.y + 140)
+
+        self.arrow_l = pygame.Rect(content.x + 15, content.y + 60, 30, 30)
+        self.arrow_r = pygame.Rect(content.x + min(content.width - 45, 125), content.y + 60, 30, 30)
+        self.flip_btn = pygame.Rect(
+            content.x + 15,
+            content.y + 185,
+            max(110, content.width - 30),
+            40,
+        )
+        self.speed_start_btn = pygame.Rect(
+            content.x + 20,
+            content.y + 100,
+            max(120, content.width - 40),
+            50,
+        )
 
     def handle_event(self, event):
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if self.btn_flip_tab.collidepoint(event.pos):
+                self.active_minigame = "coin_flip"
+                return
+            if self.btn_speed_tab.collidepoint(event.pos):
+                self.active_minigame = "speed_click"
+                return
+
+        if self.active_minigame == "coin_flip":
+            side = self.side_toggle.handle_event(event)
+            range_val = self.range_toggle.handle_event(event)
+
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                if self.arrow_l.collidepoint(event.pos) and self.coin_idx > 0:
+                    self.coin_idx -= 1
+                    return
+                if self.arrow_r.collidepoint(event.pos) and self.coin_idx < len(COIN_OPTIONS) - 1:
+                    self.coin_idx += 1
+                    return
+                if self.flip_btn.collidepoint(event.pos):
+                    self.bet_result_text = process_coin_bet(
+                        self.game,
+                        COIN_OPTIONS[self.coin_idx],
+                        side,
+                        range_val,
+                    )
+                    return
+
+        elif self.active_minigame == "speed_click":
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                if not self.speed_active:
+                    if (
+                        self.speed_start_btn.collidepoint(event.pos)
+                        and time.time() > self.speed_cooldown_end
+                    ):
+                        if start_speed_click_session(self.game):
+                            self.speed_active = True
+                            self.speed_targets_hit = 0
+                            self.speed_round_start_time = pygame.time.get_ticks()
+                            self._spawn_speed_target()
+                            self.speed_msg = "CLICK!"
+                        else:
+                            self.speed_msg = "Too Poor!"
+                        return
+                else:
+                    if (
+                        self.speed_current_target
+                        and self.speed_current_target.collidepoint(event.pos)
+                    ):
+                        process_speed_click_hit(self.game)
+                        self.speed_targets_hit += 1
+                        self.speed_current_target = None
+
+                        if self.speed_targets_hit < self.speed_max_targets:
+                            self._spawn_speed_target()
+                        else:
+                            self._end_speed_round()
+                        return
+
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if self.click_button_rect.collidepoint(event.pos):
                 add_manual_click(self.game)
                 return
 
-            for building_id, rect in self.building_buy_buttons.items():
-                if rect.collidepoint(event.pos):
-                    buy_building(self.game, building_id)
-                    return
-
-            # Clicking a building card also tries to buy it, like the older left-bar version.
             for building_id, rect in self.building_cards.items():
                 if rect.collidepoint(event.pos):
                     buy_building(self.game, building_id)
                     return
 
-            for upgrade_id, rect in self.upgrade_buy_buttons.items():
+            for upgrade_id, rect in self.upgrade_cards.items():
                 if rect.collidepoint(event.pos):
                     buy_upgrade(self.game, upgrade_id)
                     return
 
         elif event.type == pygame.MOUSEMOTION:
             self.hovered_building_id = None
+            self.hovered_upgrade_id = None
+
             for building_id, rect in self.building_cards.items():
                 if rect.collidepoint(event.pos):
                     self.hovered_building_id = building_id
-                    break
+                    return
+
+            for upgrade_id, rect in self.upgrade_cards.items():
+                if rect.collidepoint(event.pos):
+                    self.hovered_upgrade_id = upgrade_id
+                    return
 
     def update(self, dt):
         update_game(self.game, dt)
+
+        if self.speed_active:
+            curr = pygame.time.get_ticks()
+
+            if curr - self.speed_round_start_time > 15000:
+                self._end_speed_round()
+
+            elif self.speed_current_target and (
+                curr - self.speed_target_spawn_time > self.speed_target_lifetime
+            ):
+                if self.speed_targets_hit < self.speed_max_targets:
+                    self._spawn_speed_target()
+                else:
+                    self._end_speed_round()
 
     def draw(self, screen):
         self._draw_panels(screen)
         self._draw_building_sidebar(screen)
         self._draw_center_game_panel(screen)
         self._draw_upgrade_panel(screen)
-        self._draw_minigame_panel(screen)
+        self._draw_minigame_area(screen)
         self._draw_hover_tooltip(screen)
 
     def _draw_panels(self, screen):
@@ -209,54 +456,101 @@ class MenuManager:
         pygame.draw.rect(screen, right_bg, self.right_panel_top)
         pygame.draw.rect(screen, right_bg, self.right_panel_bottom)
 
-        for rect in [self.left_panel, self.center_panel, self.right_panel_top, self.right_panel_bottom]:
+        for rect in [
+            self.left_panel,
+            self.center_panel,
+            self.right_panel_top,
+            self.right_panel_bottom,
+        ]:
             pygame.draw.rect(screen, border, rect, 1)
 
     def _draw_building_sidebar(self, screen):
         border = getattr(settings, "PANEL_BORDER", getattr(settings, "BLACK", (0, 0, 0)))
-        left_bg = getattr(settings, "LEFT_PANEL_BG", (198, 160, 160))
+        black = getattr(settings, "BLACK", (0, 0, 0))
+        card_bg = getattr(settings, "BUILDING_CARD_BG", (255, 255, 255))
+        disabled_bg = getattr(settings, "BUILDING_DISABLED_BG", (218, 218, 218))
+        hover_boost = 10
 
         for building_id in self.building_order:
             rect = self.building_cards[building_id]
-            buy_rect = self.building_buy_buttons[building_id]
             building = BUILDINGS[building_id]
             owned = self.game.buildings_owned[building_id]
             cost = get_building_cost(building_id, owned)
+            affordable = self.game.chuds >= cost
             hovered = self.hovered_building_id == building_id
 
-            fill = tuple(min(255, c + 15) for c in left_bg) if hovered else left_bg
+            fill = card_bg if affordable else disabled_bg
+            if hovered:
+                fill = tuple(min(255, c + hover_boost) for c in fill)
+
             pygame.draw.rect(screen, fill, rect)
             pygame.draw.rect(screen, border, rect, 1)
 
-            title = self.section_font.render(building.get("name", building_id.title()), True, getattr(settings, "BLACK", (0, 0, 0)))
-            owned_text = self.body_font.render(f"Owned: {owned}", True, getattr(settings, "BLACK", (0, 0, 0)))
-            cps_text = self.small_font.render(f"+{building['base_cps']} CHUD/sec each", True, getattr(settings, "BLACK", (0, 0, 0)))
-            cost_text = self.small_font.render(f"Next cost: {cost}", True, getattr(settings, "BLACK", (0, 0, 0)))
+            title = self.section_font.render(building.get("name", building_id.title()), True, black)
+            owned_text = self.body_font.render(f"Owned: {owned}", True, black)
+            cps_text = self.small_font.render(
+                f"+{format_chud_amount(building['base_cps'])} CHUD/sec each",
+                True,
+                black,
+            )
+            cost_text = self.small_font.render(
+                f"Next cost: {format_chud_amount(cost)}",
+                True,
+                black,
+            )
 
-            screen.blit(title, (rect.x + 14, rect.y + 14))
-            screen.blit(owned_text, (rect.x + 14, rect.y + 50))
-            screen.blit(cps_text, (rect.x + 14, rect.y + 78))
-            screen.blit(cost_text, (rect.x + 14, rect.y + 98))
+            screen.blit(title, (rect.x + 14, rect.y + 10))
+            screen.blit(owned_text, (rect.x + 14, rect.y + 40))
+            screen.blit(cps_text, (rect.x + 14, rect.y + 64))
+            screen.blit(cost_text, (rect.x + 14, rect.y + 86))
 
-            self._draw_button(screen, buy_rect, "Buy", self.game.chuds >= cost)
-
+        coming_bg = getattr(settings, "BUILDING_DISABLED_BG", (218, 218, 218))
         if self.empty_building_card.bottom <= self.left_panel.bottom:
-            pygame.draw.rect(screen, left_bg, self.empty_building_card)
+            pygame.draw.rect(screen, coming_bg, self.empty_building_card)
             pygame.draw.rect(screen, border, self.empty_building_card, 1)
-            coming_title = self.section_font.render("Coming Soon", True, getattr(settings, "BLACK", (0, 0, 0)))
-            coming_text = self.small_font.render("Future building slot", True, getattr(settings, "BLACK", (0, 0, 0)))
-            screen.blit(coming_title, (self.empty_building_card.x + 14, self.empty_building_card.y + 22))
-            screen.blit(coming_text, (self.empty_building_card.x + 14, self.empty_building_card.y + 60))
+            coming_title = self.section_font.render("Coming Soon", True, black)
+            coming_text = self.small_font.render("Future building slot", True, black)
+            screen.blit(
+                coming_title,
+                (self.empty_building_card.x + 14, self.empty_building_card.y + 18),
+            )
+            screen.blit(
+                coming_text,
+                (self.empty_building_card.x + 14, self.empty_building_card.y + 52),
+            )
+
+    def _spawn_speed_target(self):
+        c = self.minigame_content_rect
+        size = max(20, 50 - (self.speed_targets_hit * 2))
+        x = random.randint(c.x + 10, max(c.x + 11, c.right - size - 10))
+        y = random.randint(c.y + 60, max(c.y + 61, c.bottom - size - 10))
+        self.speed_current_target = pygame.Rect(x, y, size, size)
+        self.speed_target_spawn_time = pygame.time.get_ticks()
+
+    def _end_speed_round(self):
+        self.speed_active = False
+        self.speed_current_target = None
+        self.speed_cooldown_end = time.time() + SPEED_CLICK_COOLDOWN
+        self.speed_msg = "Finished!"
 
     def _draw_center_game_panel(self, screen):
         black = getattr(settings, "BLACK", (0, 0, 0))
         dark_gray = getattr(settings, "DARK_GRAY", (60, 60, 60))
         light_blue = getattr(settings, "LIGHT_BLUE", (160, 200, 255))
 
-        total_text = self.title_font.render(f"CHUD Total: {self.game.chuds:.1f}", True, black)
-        cps_text = self.title_font.render(f"CHUD/sec: {self.game.total_cps:.1f}", True, black)
-        screen.blit(total_text, (self.center_panel.x + 26, self.center_panel.y + 26))
-        screen.blit(cps_text, (self.center_panel.x + 26, self.center_panel.y + 70))
+        formatted_total = format_chud_amount(self.game.chuds)
+        formatted_cps = format_chud_amount(self.game.total_cps)
+
+        total_text = self.title_font.render(f"{formatted_total} CHUDs", True, black)
+        cps_text = self.body_font.render(f"CHUD/sec: {formatted_cps}", True, dark_gray)
+
+        total_rect = total_text.get_rect(
+            topleft=(self.center_panel.x + 26, self.center_panel.y + 26)
+        )
+        cps_rect = cps_text.get_rect(centerx=total_rect.centerx, top=total_rect.bottom + 2)
+
+        screen.blit(total_text, total_rect)
+        screen.blit(cps_text, cps_rect)
 
         title = self.title_font.render("CHUD Clicker", True, black)
         title_rect = title.get_rect(center=(self.center_panel.centerx, self.click_area.y + 30))
@@ -271,80 +565,258 @@ class MenuManager:
             screen.blit(fallback, fallback_rect)
 
         help_text = self.body_font.render("Click the post to earn CHUDs", True, dark_gray)
-        help_rect = help_text.get_rect(center=(self.click_area.centerx, self.click_button_rect.bottom + 34))
+        help_rect = help_text.get_rect(
+            center=(self.click_area.centerx, self.click_button_rect.bottom + 34)
+        )
         screen.blit(help_text, help_rect)
 
     def _draw_upgrade_panel(self, screen):
         black = getattr(settings, "BLACK", (0, 0, 0))
-        card_bg = getattr(settings, "CARD_BG", (235, 235, 235))
+        card_bg = getattr(settings, "CARD_BG", (255, 255, 255))
+        disabled_card_bg = getattr(settings, "BUILDING_DISABLED_BG", (218, 218, 218))
         border = getattr(settings, "PANEL_BORDER", black)
-        owned_color = getattr(settings, "UPGRADE_OWNED", (88, 165, 92))
+        locked_card_bg = getattr(settings, "UPGRADE_LOCKED_BG", (228, 190, 190))
+        locked_text_color = getattr(settings, "UPGRADE_LOCKED_TEXT", (120, 45, 45))
 
         title = self.title_font.render("Upgrades", True, black)
-        screen.blit(title, (self.right_panel_top.x + 18, self.right_panel_top.y + 18))
+        screen.blit(title, (self.right_panel_top.x + 18, self.right_panel_top.y + 14))
 
         for upgrade_id in self.upgrade_order:
             rect = self.upgrade_cards[upgrade_id]
-            buy_rect = self.upgrade_buy_buttons[upgrade_id]
             upgrade = UPGRADES[upgrade_id]
-            owned = upgrade_id in self.game.upgrades_owned
-            affordable = self.game.chuds >= upgrade["cost"] and not owned
 
-            pygame.draw.rect(screen, card_bg, rect, border_radius=8)
+            level = self.game.upgrades_owned[upgrade_id]
+            cost = get_upgrade_cost(upgrade_id, level)
+            unlocked = is_upgrade_unlocked(self.game, upgrade_id)
+            affordable = unlocked and self.game.chuds >= cost
+            required_building = get_upgrade_required_building(upgrade_id)
+            required_name = (
+                BUILDINGS[required_building]["name"]
+                if required_building in BUILDINGS
+                else (required_building or "none")
+            )
+            hovered = self.hovered_upgrade_id == upgrade_id
+
+            if not unlocked:
+                fill_color = locked_card_bg
+            elif affordable:
+                fill_color = card_bg
+            else:
+                fill_color = disabled_card_bg
+
+            if hovered:
+                fill_color = tuple(min(255, c + 8) for c in fill_color)
+
+            pygame.draw.rect(screen, fill_color, rect, border_radius=8)
             pygame.draw.rect(screen, border, rect, 1, border_radius=8)
 
-            name_text = self.body_font.render(upgrade["name"], True, black)
-            cost_text = self.small_font.render(f"Cost: {upgrade['cost']}", True, black)
-            screen.blit(name_text, (rect.x + 10, rect.y + 8))
-            screen.blit(cost_text, (rect.x + 10, rect.y + 34))
+            name_font = self.body_font if rect.height >= 58 else self.small_font
+            primary_text_color = black if unlocked else locked_text_color
+            detail_color = black if unlocked else locked_text_color
 
-            if owned:
-                self._draw_button(screen, buy_rect, "Owned", True, force_color=owned_color)
+            name_text = name_font.render(upgrade["name"], True, primary_text_color)
+            level_text = self.small_font.render(f"Lv. {level}", True, primary_text_color)
+
+            screen.blit(name_text, (rect.x + 10, rect.y + 6))
+            screen.blit(level_text, (rect.right - level_text.get_width() - 10, rect.y + 8))
+
+            if unlocked:
+                detail_text = self.small_font.render(
+                    f"Next cost: {format_chud_amount(cost)}",
+                    True,
+                    detail_color,
+                )
             else:
-                self._draw_button(screen, buy_rect, "Buy", affordable)
+                detail_text = self.small_font.render(
+                    f"Need: {required_name}",
+                    True,
+                    detail_color,
+                )
 
-    def _draw_minigame_panel(self, screen):
+            screen.blit(detail_text, (rect.x + 10, rect.bottom - detail_text.get_height() - 6))
+
+    def _draw_button(self, screen, rect, label, enabled, force_color=None):
+        button_bg = getattr(settings, "BUTTON_BG", (25, 124, 214))
+        button_disabled = getattr(settings, "BUTTON_DISABLED", (140, 140, 140))
+        white = getattr(settings, "WHITE", (255, 255, 255))
+        border = getattr(settings, "PANEL_BORDER", getattr(settings, "BLACK", (0, 0, 0)))
+
+        color = force_color if force_color is not None else (
+            button_bg if enabled else button_disabled
+        )
+        pygame.draw.rect(screen, color, rect, border_radius=8)
+        pygame.draw.rect(screen, border, rect, 1, border_radius=8)
+
+        text = self.button_font.render(label, True, white)
+        text_rect = text.get_rect(center=rect.center)
+        screen.blit(text, text_rect)
+
+    def _draw_minigame_area(self, screen):
+        dark_gray = getattr(settings, "DARK_GRAY", (80, 80, 80))
         black = getattr(settings, "BLACK", (0, 0, 0))
-        title = self.title_font.render("Mini Games", True, black)
-        text = self.body_font.render("Reserved space for later", True, black)
-        screen.blit(title, (self.right_panel_bottom.x + 18, self.right_panel_bottom.y + 18))
-        screen.blit(text, (self.right_panel_bottom.x + 18, self.right_panel_bottom.y + 70))
+        white = getattr(settings, "WHITE", (255, 255, 255))
+        blue = getattr(settings, "BLUE", (0, 121, 211))
+        coin_gold = getattr(settings, "COIN_GOLD", (255, 215, 0))
+        border = getattr(settings, "PANEL_BORDER", black)
+
+        pygame.draw.rect(screen, dark_gray, self.minigame_switcher_rect)
+        pygame.draw.rect(screen, border, self.minigame_switcher_rect, 1)
+
+        flip_color = blue if self.active_minigame == "coin_flip" else (110, 110, 110)
+        speed_color = coin_gold if self.active_minigame == "speed_click" else (110, 110, 110)
+
+        pygame.draw.rect(screen, flip_color, self.btn_flip_tab, border_radius=8)
+        pygame.draw.rect(screen, speed_color, self.btn_speed_tab, border_radius=8)
+        pygame.draw.rect(screen, border, self.btn_flip_tab, 1, border_radius=8)
+        pygame.draw.rect(screen, border, self.btn_speed_tab, 1, border_radius=8)
+
+        flip_text = self.button_font.render("C", True, white)
+        speed_text = self.button_font.render("S", True, black if self.active_minigame == "speed_click" else white)
+        screen.blit(flip_text, flip_text.get_rect(center=self.btn_flip_tab.center))
+        screen.blit(speed_text, speed_text.get_rect(center=self.btn_speed_tab.center))
+
+        if self.active_minigame == "coin_flip":
+            self._draw_coin_flip(screen)
+        elif self.active_minigame == "speed_click":
+            self._draw_speed_click(screen)
+
+    def _draw_coin_flip(self, screen):
+        c = self.minigame_content_rect
+        black = getattr(settings, "BLACK", (0, 0, 0))
+        white = getattr(settings, "WHITE", (255, 255, 255))
+        dark_gray = getattr(settings, "DARK_GRAY", (80, 80, 80))
+        blue = getattr(settings, "BLUE", (0, 121, 211))
+
+        title = self.section_font.render("CoinBet Casino", True, black)
+        screen.blit(title, (c.x + 15, c.y + 10))
+
+        pygame.draw.rect(screen, dark_gray, self.arrow_l, border_radius=5)
+        pygame.draw.rect(screen, dark_gray, self.arrow_r, border_radius=5)
+
+        l_txt = self.button_font.render("<", True, white)
+        r_txt = self.button_font.render(">", True, white)
+        screen.blit(l_txt, l_txt.get_rect(center=self.arrow_l.center))
+        screen.blit(r_txt, r_txt.get_rect(center=self.arrow_r.center))
+
+        val_text = self.body_font.render(f"{COIN_OPTIONS[self.coin_idx]} Coins", True, black)
+        screen.blit(val_text, (c.x + 55, c.y + 62))
+
+        self.side_toggle.draw(screen, self.small_font, blue)
+        self.range_toggle.draw(screen, self.small_font, blue)
+
+        self._draw_button(screen, self.flip_btn, "FLIP CHUDs", True, force_color=(50, 200, 50))
+
+        res_txt = self.small_font.render(self.bet_result_text, True, black)
+        screen.blit(res_txt, (c.x + 15, c.y + 235))
+
+    def _draw_speed_click(self, screen):
+        c = self.minigame_content_rect
+        black = getattr(settings, "BLACK", (0, 0, 0))
+        white = getattr(settings, "WHITE", (255, 255, 255))
+
+        title = self.section_font.render("Aim Train", True, black)
+        screen.blit(title, (c.x + 15, c.y + 10))
+
+        msg = self.small_font.render(self.speed_msg, True, black)
+        screen.blit(msg, (c.x + 15, c.y + 40))
+
+        if not self.speed_active:
+            on_cd = time.time() < self.speed_cooldown_end
+            color = (100, 100, 100) if on_cd else (70, 200, 70)
+            self._draw_button(
+                screen,
+                self.speed_start_btn,
+                (
+                    f"Wait {int(self.speed_cooldown_end - time.time())}s"
+                    if on_cd
+                    else f"START ({format_chud_amount(get_speed_click_cost(self.game))})"
+                ),
+                not on_cd,
+                force_color=color,
+            )
+        else:
+            elapsed = pygame.time.get_ticks() - self.speed_round_start_time
+            time_left = max(0, 15 - (elapsed // 1000))
+            timer_color = (200, 0, 0) if time_left < 5 else black
+            timer_surf = self.small_font.render(f"Time: {time_left}s", True, timer_color)
+            screen.blit(timer_surf, (c.right - 85, c.y + 40))
+
+            if self.speed_current_target:
+                pygame.draw.rect(screen, (200, 0, 0), self.speed_current_target, border_radius=4)
+                pygame.draw.rect(screen, white, self.speed_current_target, 2, border_radius=4)
+
+            prog = self.small_font.render(
+                f"Hits: {self.speed_targets_hit}/{self.speed_max_targets}",
+                True,
+                black,
+            )
+            screen.blit(prog, (c.x + 15, c.bottom - 30))
 
     def _draw_hover_tooltip(self, screen):
-        if not self.hovered_building_id:
+        lines = None
+        if self.hovered_building_id:
+            lines = self._get_building_tooltip_lines(self.hovered_building_id)
+        elif self.hovered_upgrade_id:
+            lines = self._get_upgrade_tooltip_lines(self.hovered_upgrade_id)
+
+        if not lines:
             return
 
         mouse_pos = pygame.mouse.get_pos()
-        building = BUILDINGS[self.hovered_building_id]
-        owned = self.game.buildings_owned[self.hovered_building_id]
-        cost = get_building_cost(self.hovered_building_id, owned)
-
-        tip_x = min(mouse_pos[0] + 18, self.screen_width - 250)
-        tip_y = min(mouse_pos[1] + 18, self.screen_height - 130)
-        tip_rect = pygame.Rect(tip_x, tip_y, 235, 110)
+        line_height = 22
+        tip_w = 285
+        tip_h = 14 + len(lines) * line_height
+        tip_x = min(mouse_pos[0] + 18, self.screen_width - tip_w - 12)
+        tip_y = min(mouse_pos[1] + 18, self.screen_height - tip_h - 12)
+        tip_rect = pygame.Rect(tip_x, tip_y, tip_w, tip_h)
 
         tip_surf = pygame.Surface((tip_rect.width, tip_rect.height), pygame.SRCALPHA)
         tip_surf.fill((20, 20, 20, 230))
         screen.blit(tip_surf, tip_rect.topleft)
         pygame.draw.rect(screen, getattr(settings, "WHITE", (255, 255, 255)), tip_rect, 2)
 
-        lines = [
-            f"{building.get('name', self.hovered_building_id.title())}",
+        for idx, line in enumerate(lines):
+            text = self.font_small.render(
+                line,
+                True,
+                getattr(settings, "WHITE", (255, 255, 255)),
+            )
+            screen.blit(text, (tip_x + 12, tip_y + 10 + idx * line_height))
+
+    def _get_building_tooltip_lines(self, building_id):
+        building = BUILDINGS[building_id]
+        owned = self.game.buildings_owned[building_id]
+        cost = get_building_cost(building_id, owned)
+        return [
+            f"{building.get('name', building_id.title())}",
             f"Owned: {owned}",
-            f"CPS each: {building['base_cps']}",
-            f"Next cost: {cost}",
+            f"CPS each: {format_chud_amount(building['base_cps'])}",
+            f"Next cost: {format_chud_amount(cost)}",
         ]
 
-        for idx, line in enumerate(lines):
-            text = self.font_small.render(line, True, getattr(settings, "WHITE", (255, 255, 255)))
-            screen.blit(text, (tip_x + 12, tip_y + 10 + idx * 22))
+    def _get_upgrade_tooltip_lines(self, upgrade_id):
+        upgrade = UPGRADES[upgrade_id]
+        level = self.game.upgrades_owned[upgrade_id]
+        lines = [upgrade.get("name", upgrade_id), f"Level: {level}"]
 
-    def _draw_button(self, screen, rect, label, enabled, force_color=None):
-        button_bg = getattr(settings, "BUTTON_BG", (25, 124, 214))
-        button_disabled = getattr(settings, "BUTTON_DISABLED", (140, 140, 140))
-        white = getattr(settings, "WHITE", (255, 255, 255))
-        color = force_color if force_color is not None else (button_bg if enabled else button_disabled)
-        pygame.draw.rect(screen, color, rect, border_radius=8)
-        text = self.button_font.render(label, True, white)
-        text_rect = text.get_rect(center=rect.center)
-        screen.blit(text, text_rect)
+        required_building = get_upgrade_required_building(upgrade_id)
+        if required_building:
+            required_name = BUILDINGS.get(required_building, {}).get("name", required_building)
+            lines.append(f"Need building: {required_name}")
+
+        upgrade_type = upgrade.get("type")
+        value = upgrade.get("value", 1)
+        target = upgrade.get("target")
+
+        if upgrade_type == "building_multiplier" and target:
+            target_name = BUILDINGS.get(target, {}).get("name", target)
+            lines.append(f"Effect: x{value:g} to {target_name}")
+        elif upgrade_type == "global_multiplier":
+            lines.append(f"Effect: x{value:g} to all CPS")
+        elif upgrade_type == "click_multiplier":
+            lines.append(f"Effect: x{value:g} to click power")
+        elif upgrade_type == "mini_game_multiplier":
+            lines.append(f"Effect: x{value:g} to mini games")
+
+        lines.append(f"Next cost: {format_chud_amount(get_upgrade_cost(upgrade_id, level))}")
+        return lines
