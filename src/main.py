@@ -5,12 +5,12 @@ import settings
 from menus import MenuManager
 
 
+
 class MusicManager:
     def __init__(self):
         self.enabled = getattr(settings, "MUSIC_ENABLED", True)
         self.volume = getattr(settings, "MUSIC_VOLUME", 0.35)
         self.clip_seconds = getattr(settings, "MUSIC_CLIP_SECONDS", 30)
-
         self.music_files = []
         self.current_track = None
         self.current_track_length = 0.0
@@ -19,20 +19,18 @@ class MusicManager:
 
         if not self.enabled:
             return
-
         self._load_music_list()
         self._setup_mixer()
 
     def _load_music_list(self):
         assets_dir = os.path.join(os.path.dirname(__file__), "..", "assets")
-
+        # These are the specific files the repo looks for
         possible_tracks = [
             "Froggy Fresh - Dunked On.mp3",
             'NA - 009 Sound System "With A Spirit" OFFICIAL HD.mp3',
             "NA - Nyan Cat! [Official].mp3",
             "Trance - 009 Sound System Dreamscape (HD) (1).mp3",
         ]
-
         for filename in possible_tracks:
             full_path = os.path.join(assets_dir, filename)
             if os.path.exists(full_path):
@@ -58,10 +56,9 @@ class MusicManager:
     def play_random_clip(self):
         if not self.enabled or not self.started_ok or not self.music_files:
             return
-
         self.current_track = random.choice(self.music_files)
         self.current_track_length = self._get_track_length(self.current_track)
-
+        
         start_pos = 0.0
         if self.current_track_length > self.clip_seconds:
             max_start = max(0.0, self.current_track_length - self.clip_seconds)
@@ -77,13 +74,12 @@ class MusicManager:
     def update(self):
         if not self.enabled or not self.started_ok or not self.music_files:
             return
-
+        
         now = pygame.time.get_ticks()
-
         if not pygame.mixer.music.get_busy():
             self.play_random_clip()
             return
-
+            
         if now >= self.clip_end_time:
             pygame.mixer.music.stop()
 
@@ -96,8 +92,9 @@ class MusicManager:
         if self.started_ok:
             pygame.mixer.music.stop()
 
-
 def main():
+    # ADD THIS BEFORE pygame.init()
+    pygame.mixer.pre_init(44100, -16, 2, 2048) 
     pygame.init()
 
     screen = pygame.display.set_mode(
@@ -108,8 +105,8 @@ def main():
     clock = pygame.time.Clock()
 
     menu_manager = MenuManager()
+    # NEW: Initialize Music
     music_manager = MusicManager()
-
     if music_manager.started_ok:
         music_manager.play_random_clip()
 
@@ -127,6 +124,8 @@ def main():
             menu_manager.handle_event(event)
 
         menu_manager.update(dt)
+        
+        # NEW: Update Music and sync Mute state with the game
         music_manager.update()
         music_manager.set_muted(menu_manager.game.music_muted)
 
@@ -134,9 +133,9 @@ def main():
         menu_manager.draw(screen)
         pygame.display.flip()
 
+    # NEW: Cleanup music on exit
     music_manager.cleanup()
     pygame.quit()
-
 
 if __name__ == "__main__":
     main()

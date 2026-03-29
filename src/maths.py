@@ -91,8 +91,8 @@ UPGRADES = {
         "value": 2.0,
     },
     "Fast Food": {
-        "name": "chicken nuggets",
-        "base_cost": 1000,
+        "name": "Chicken Nuggys",
+        "base_cost": 2500,
         "cost_growth": 1.15,
         "cost_growth_steps": [
             {"level": 15, "growth": 1.5},
@@ -108,7 +108,7 @@ UPGRADES = {
     },
     "global_boost": {
         "name": "All the Man Needs",
-        "base_cost": 1000,
+        "base_cost": 6969,
         "cost_growth": 1.15,
         "cps_growth": 1.15,
         "cost_growth_steps": [
@@ -121,25 +121,9 @@ UPGRADES = {
         "type": "global_multiplier",
         "value": 1.5,
     },
-    "Fast Food": {
-        "name": "Chicken Nuggys",
-        "base_cost": 1000,
-        "cost_growth": 1.15,
-        "cost_growth_steps": [
-            {"level": 15, "growth": 1.5},
-            {"level": 25, "growth": 1.75},
-            {"level": 50, "growth": 2.0},
-            {"level": 75, "growth": 2.25},
-            {"level": 100, "growth": 2.5},
-        ],
-        "type": "building_multiplier",
-        "target": "Fast Food",
-        "required_building": "Fast Food",
-        "value": 1.5,
-    },
     "Mtn Dew": {
         "name": "MTN Dew",
-        "base_cost": 1000,
+        "base_cost": 1500,
         "cost_growth": 1.15,
         "cost_growth_steps": [
             {"level": 15, "growth": 1.5},
@@ -153,7 +137,7 @@ UPGRADES = {
     },
     "Mini Game": {
         "name": "Gamer lean",
-        "base_cost": 1000,
+        "base_cost": 3000,
         "cost_growth": 1.15,
         "cost_growth_steps": [
             {"level": 15, "growth": 1.5},
@@ -166,7 +150,6 @@ UPGRADES = {
         "value": 1.5,
     },
 }
-
 
 # -----------------------------
 # Game state
@@ -486,3 +469,20 @@ def start_speed_click_session(state: GameState) -> bool:
         state.chuds -= cost
         return True
     return False
+# -----------------------------
+# Minigame Unlock Gates
+# -----------------------------
+def can_play_minigame(state: GameState, minigame_type: str) -> bool:
+    """
+    Returns True to allow immediate access to minigames.
+    You can also change this to 'return sum(state.buildings_owned.values()) > 0'
+    if you want them to buy at least one building first.
+    """
+    return True
+
+def clear_minigame_gates(state: GameState, minigame_type: str):
+    """
+    Required by menus.py to prevent NameError. 
+    Logic removed as requested.
+    """
+    pass

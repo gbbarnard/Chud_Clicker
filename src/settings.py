@@ -13,17 +13,18 @@ BLUE = (0, 121, 211)  # Reddit-ish Blue
 LIGHT_BLUE = (148, 197, 255)
 DARK_GRAY = (80, 80, 80)
 PANEL_BORDER = (110, 110, 110)
-LEFT_PANEL_BG = (206, 167, 167)
-RIGHT_PANEL_BG = (220, 220, 220)
-CENTER_PANEL_BG = (214, 214, 214)
-CARD_BG = (238, 238, 238)
+# 180 is roughly 70% opacity
+LEFT_PANEL_BG = (206, 167, 167, 180)
+RIGHT_PANEL_BG = (220, 220, 220, 180)
+CENTER_PANEL_BG = (0, 0, 0, 0)#(214, 214, 214, 180)
+# Make cards slightly more solid so text remains readable
+CARD_BG = (238, 238, 238, 220)
 BUTTON_DISABLED = (145, 164, 184)
 BUTTON_BG = BLUE
 UPGRADE_OWNED = (60, 160, 90)
 
-MUSIC_BUTTON_BG = (245, 245, 245)
-MUSIC_BUTTON_MUTED_BG = (200, 160, 160)
-MUSIC_BUTTON_BORDER = (110, 110, 110)
+# Add this for your background filename
+BACKGROUND_IMAGE = "background.webp" # or .png/.jpg
 
 # Added from second file
 UPGRADE_LOCKED_BG = (228, 190, 190)
@@ -56,6 +57,18 @@ LEFT_COLUMN_X = 0
 CENTER_COLUMN_X = LEFT_COL_WIDTH
 RIGHT_COLUMN_X = LEFT_COL_WIDTH + CENTER_COL_WIDTH
 
+MUSIC_BUTTON_BG = (245, 245, 245)
+
+MUSIC_BUTTON_MUTED_BG = (200, 160, 160)
+
+MUSIC_BUTTON_BORDER = (110, 110, 110)
+
+MUSIC_ENABLED = True
+
+MUSIC_VOLUME = 0.35
+
+MUSIC_CLIP_SECONDS = 30
+
 # --- Dynamic Column Logic ---
 # We use a function so we can call it whenever the window size changes
 def get_column_layout(current_width):
@@ -73,8 +86,12 @@ def get_column_layout(current_width):
         "right_x": left_w + center_w,
         "right_w": right_w
     }
-    
-    # Music Settings
+# Music Button Colors
+MUSIC_BUTTON_BG = (245, 245, 245)
+MUSIC_BUTTON_MUTED_BG = (200, 160, 160)
+MUSIC_BUTTON_BORDER = (110, 110, 110)
+
+# Music Engine Settings
 MUSIC_ENABLED = True
 MUSIC_VOLUME = 0.35
 MUSIC_CLIP_SECONDS = 30
