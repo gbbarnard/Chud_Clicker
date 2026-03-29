@@ -11,27 +11,30 @@ BUILDINGS = {
         "base_cost": 15,
         "base_cps": 0.5,
         "cost_growth": 1.15,
+        "cps_growth": 1.15,
     },
     "Gaming Pc": {
         "name": "Gaming PC",
         "base_cost": 250,
         "base_cps": 2.0,
         "cost_growth": 1.5,
+        "cps_growth": 1.12,
     },
     "Waifu's": {
         "name": "Waifu's",
         "base_cost": 5000,
         "base_cps": 8.0,
         "cost_growth": 1.75,
+        "cps_growth": 1.10,
     },
     "Fast Food": {
         "name": "Fast Food",
         "base_cost": 1000000,
         "base_cps": 8.0,
         "cost_growth": 2.0,
+        "cps_growth": 1.08,
     },
 }
-
 # -----------------------------
 # Upgrade definitions
 # -----------------------------
@@ -40,6 +43,14 @@ UPGRADES = {
         "name": "Karma Farm",
         "base_cost": 50,
         "cost_growth": 1.15,
+        "cps_growth": 1.15,
+        "cost_growth_steps": [
+            {"level": 15, "growth": 1.5},
+            {"level": 25, "growth": 1.75},
+            {"level": 50, "growth": 2.0},
+            {"level": 75, "growth": 2.25},
+            {"level": 100, "growth": 2.5},
+        ],
         "type": "building_multiplier",
         "target": "Reddit Bots",
         "required_building": "Reddit Bots",
@@ -49,6 +60,14 @@ UPGRADES = {
         "name": "Overclock",
         "base_cost": 200,
         "cost_growth": 1.15,
+        "cps_growth": 1.15,
+        "cost_growth_steps": [
+            {"level": 15, "growth": 1.5},
+            {"level": 25, "growth": 1.75},
+            {"level": 50, "growth": 2.0},
+            {"level": 75, "growth": 2.25},
+            {"level": 100, "growth": 2.5},
+        ],
         "type": "building_multiplier",
         "target": "Gaming Pc",
         "required_building": "Gaming Pc",
@@ -58,23 +77,61 @@ UPGRADES = {
         "name": "Cardboard Cutout",
         "base_cost": 500,
         "cost_growth": 1.15,
+        "cps_growth": 1.15,
+        "cost_growth_steps": [
+            {"level": 15, "growth": 1.5},
+            {"level": 25, "growth": 1.75},
+            {"level": 50, "growth": 2.0},
+            {"level": 75, "growth": 2.25},
+            {"level": 100, "growth": 2.5},
+        ],
         "type": "building_multiplier",
         "target": "Waifu's",
         "required_building": "Waifu's",
         "value": 2.0,
     },
-    "global_boost": {
-        "name": "All the Man Needs",
-        "base_cost": 1000,
-        "cost_growth": 1.15,
-        "type": "global_multiplier",
-        "required_building": "Gaming Pc",
-        "value": 1.5,
-    },
     "Fast Food": {
         "name": "chicken nuggets",
         "base_cost": 1000,
         "cost_growth": 1.15,
+        "cost_growth_steps": [
+            {"level": 15, "growth": 1.5},
+            {"level": 25, "growth": 1.75},
+            {"level": 50, "growth": 2.0},
+            {"level": 75, "growth": 2.25},
+            {"level": 100, "growth": 2.5},
+        ],
+        "type": "building_multiplier",
+        "target": "Fast Food",
+        "required_building": "Fast Food",
+        "value": 1.5,
+    },
+    "global_boost": {
+        "name": "All the Man Needs",
+        "base_cost": 1000,
+        "cost_growth": 1.15,
+        "cps_growth": 1.15,
+        "cost_growth_steps": [
+            {"level": 15, "growth": 1.5},
+            {"level": 25, "growth": 1.75},
+            {"level": 50, "growth": 2.0},
+            {"level": 75, "growth": 2.25},
+            {"level": 100, "growth": 2.5},
+        ],
+        "type": "global_multiplier",
+        "value": 1.5,
+    },
+    "Fast Food": {
+        "name": "Chicken Nuggys",
+        "base_cost": 1000,
+        "cost_growth": 1.15,
+        "cost_growth_steps": [
+            {"level": 15, "growth": 1.5},
+            {"level": 25, "growth": 1.75},
+            {"level": 50, "growth": 2.0},
+            {"level": 75, "growth": 2.25},
+            {"level": 100, "growth": 2.5},
+        ],
         "type": "building_multiplier",
         "target": "Fast Food",
         "required_building": "Fast Food",
@@ -84,6 +141,13 @@ UPGRADES = {
         "name": "MTN Dew",
         "base_cost": 1000,
         "cost_growth": 1.15,
+        "cost_growth_steps": [
+            {"level": 15, "growth": 1.5},
+            {"level": 25, "growth": 1.75},
+            {"level": 50, "growth": 2.0},
+            {"level": 75, "growth": 2.25},
+            {"level": 100, "growth": 2.5},
+        ],
         "type": "click_multiplier",
         "value": 1.5,
     },
@@ -91,6 +155,13 @@ UPGRADES = {
         "name": "Gamer lean",
         "base_cost": 1000,
         "cost_growth": 1.15,
+        "cost_growth_steps": [
+            {"level": 15, "growth": 1.5},
+            {"level": 25, "growth": 1.75},
+            {"level": 50, "growth": 2.0},
+            {"level": 75, "growth": 2.25},
+            {"level": 100, "growth": 2.5},
+        ],
         "type": "mini_game_multiplier",
         "value": 1.5,
     },
@@ -139,7 +210,28 @@ def get_click_value(state: GameState) -> float:
     return click_value
 
 
+def get_building_upgrade_level(state: GameState, building_id: str) -> int:
+    level = 0
+
+    for upgrade_id, amount_owned in state.upgrades_owned.items():
+        upgrade = UPGRADES[upgrade_id]
+        if (
+            upgrade.get("type") == "building_multiplier"
+            and upgrade.get("target") == building_id
+        ):
+            level += amount_owned
+
+    return level
+
+
 def get_building_multiplier(state: GameState, building_id: str) -> float:
+    """
+    Every 5 upgrade levels gives one multiplier step.
+    Example:
+    level 0-4  -> x1
+    level 5-9  -> xvalue
+    level 10-14 -> xvalue^2
+    """
     multiplier = 1.0
 
     for upgrade_id, amount_owned in state.upgrades_owned.items():
@@ -148,12 +240,23 @@ def get_building_multiplier(state: GameState, building_id: str) -> float:
             upgrade.get("type") == "building_multiplier"
             and upgrade.get("target") == building_id
         ):
-            for _ in range(amount_owned):
-                multiplier *= upgrade.get("value", 1.0)
+            milestone_count = amount_owned // 5
+            multiplier *= upgrade.get("value", 1.0) ** milestone_count
 
     return multiplier
 
+def get_building_effective_base_cps(state: GameState, building_id: str) -> float:
+    """
+    Each upgrade level increases the building's base CPS
+    using that building's cps_growth.
+    """
+    building = BUILDINGS[building_id]
+    base_cps = building["base_cps"]
+    cps_growth = building.get("cps_growth", 1.0)
 
+    upgrade_level = get_building_upgrade_level(state, building_id)
+
+    return base_cps * (cps_growth ** upgrade_level)
 def get_global_multiplier(state: GameState) -> float:
     multiplier = 1.0
 
@@ -185,17 +288,17 @@ def calculate_total_cps(state: GameState) -> float:
     total = 0.0
 
     for building_id, amount_owned in state.buildings_owned.items():
-        building = BUILDINGS[building_id]
-        building_cps = (
-            amount_owned
-            * building["base_cps"]
-            * get_building_multiplier(state, building_id)
-        )
+        if amount_owned <= 0:
+            continue
+
+        effective_base_cps = get_building_effective_base_cps(state, building_id)
+        building_multiplier = get_building_multiplier(state, building_id)
+
+        building_cps = amount_owned * effective_base_cps * building_multiplier
         total += building_cps
 
     total *= get_global_multiplier(state)
     return total
-
 
 def refresh_cps(state: GameState):
     state.total_cps = calculate_total_cps(state)
@@ -251,12 +354,36 @@ def add_manual_click(state: GameState):
 
 
 # -----------------------------
+# Cost scaling helpers
+# -----------------------------
+def get_current_growth_rate(item_data: dict, amount_owned: int) -> float:
+    growth = item_data["cost_growth"]# 
+    growth_steps = sorted(item_data.get("cost_growth_steps", []), key=lambda step: step["level"])
+
+    for step in growth_steps:
+        if amount_owned >= step["level"]:
+            growth = step["growth"]
+        else:
+            break
+
+    return growth
+
+
+def get_scaled_cost(base_cost: int, item_data: dict, amount_owned: int) -> int:
+    cost = float(base_cost)
+
+    for owned_count in range(amount_owned):
+        cost *= get_current_growth_rate(item_data, owned_count)
+
+    return math.ceil(cost)
+
+
+# -----------------------------
 # Buying buildings
 # -----------------------------
 def get_building_cost(building_id: str, amount_owned: int) -> int:
     building = BUILDINGS[building_id]
-    raw_cost = building["base_cost"] * (building["cost_growth"] ** amount_owned)
-    return math.ceil(raw_cost)
+    return get_scaled_cost(building["base_cost"], building, amount_owned)
 
 
 def buy_building(state: GameState, building_id: str) -> bool:
@@ -277,8 +404,7 @@ def buy_building(state: GameState, building_id: str) -> bool:
 # -----------------------------
 def get_upgrade_cost(upgrade_id: str, amount_owned: int) -> int:
     upgrade = UPGRADES[upgrade_id]
-    raw_cost = upgrade["base_cost"] * (upgrade["cost_growth"] ** amount_owned)
-    return math.ceil(raw_cost)
+    return get_scaled_cost(upgrade["base_cost"], upgrade, amount_owned)
 
 
 def buy_upgrade(state: GameState, upgrade_id: str) -> bool:

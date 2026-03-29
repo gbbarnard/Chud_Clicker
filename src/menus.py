@@ -24,6 +24,23 @@ from maths import (
     format_chud_amount,
 )
 
+BUILDING_IMAGE_FILES = {
+    "Reddit Bots": "Reddit_bots.webp",
+    "Gaming Pc": "Gamer_pc.webp",
+    "Waifu's": "Waifu.webp",
+    "Fast Food": "Fast_food.webp",
+}
+
+UPGRADE_IMAGE_FILES = {
+    "redit bots": "Karma_farms.webp",
+    "Gaming PC": "OverClock.webp",
+    "Waifu": "Waifu.webp",
+    "global_boost": "All_a_man_needs.webp",
+    "Fast Food": "Chicken_nuggies.webp",
+    "Mtn Dew": "Mtn_dew.webp",
+    "Mini Game": "Gamer_leans.webp",
+}
+
 
 class Toggle:
     def __init__(self, x, y, width, height, options):
@@ -96,6 +113,12 @@ class MenuManager:
 
         self.button_source_image = None
         self.button_image = None
+
+        self.building_source_images = {}
+        self.upgrade_source_images = {}
+        self.building_images = {}
+        self.upgrade_images = {}
+
         self.hovered_building_id = None
         self.hovered_upgrade_id = None
 
@@ -106,15 +129,48 @@ class MenuManager:
         )
 
     def _load_assets(self):
-        image_path = os.path.join(
-            os.path.dirname(__file__),
-            "..",
-            "assets",
-            "Reddit Post Button .png",
-        )
+        assets_dir = os.path.join(os.path.dirname(__file__), "..", "assets")
 
-        if os.path.exists(image_path):
-            self.button_source_image = pygame.image.load(image_path).convert_alpha()
+        def load_image_file(filename):
+            path = os.path.join(assets_dir, filename)
+            if os.path.exists(path):
+                try:
+                    return pygame.image.load(path).convert_alpha()
+                except pygame.error as e:
+                    print(f"Could not load image {filename}: {e}")
+            else:
+                print(f"Missing image file: {filename}")
+            return None
+
+        self.button_source_image = load_image_file("Reddit Post Button .png")
+
+        for building_id, filename in BUILDING_IMAGE_FILES.items():
+            image = load_image_file(filename)
+            if image:
+                self.building_source_images[building_id] = image
+
+        for upgrade_id, filename in UPGRADE_IMAGE_FILES.items():
+            image = load_image_file(filename)
+            if image:
+                self.upgrade_source_images[upgrade_id] = image
+
+    def _scale_card_image(self, image, target_size):
+        if image is None:
+            return None
+
+        target_w, target_h = target_size
+        if target_w <= 0 or target_h <= 0:
+            return None
+
+        img_w, img_h = image.get_size()
+        if img_w <= 0 or img_h <= 0:
+            return None
+
+        scale = min(target_w / img_w, target_h / img_h)
+        new_w = max(1, int(img_w * scale))
+        new_h = max(1, int(img_h * scale))
+
+        return pygame.transform.smoothscale(image, (new_w, new_h))
 
     def _build_upgrade_order(self):
         building_index = {
@@ -272,6 +328,27 @@ class MenuManager:
                 upgrade_card_h,
             )
             self.upgrade_cards[upgrade_id] = rect
+
+        self.building_images = {}
+        for building_id, rect in self.building_cards.items():
+            source = self.building_source_images.get(building_id)
+            if source:
+                image_area_w = min(58, max(40, rect.width // 4))
+                image_area_h = rect.height - 16
+                self.building_images[building_id] = self._scale_card_image(
+                    source,
+                    (image_area_w, image_area_h),
+                )
+
+        self.upgrade_images = {}
+        for upgrade_id, rect in self.upgrade_cards.items():
+            source = self.upgrade_source_images.get(upgrade_id)
+            if source:
+                image_area = rect.height - 12
+                self.upgrade_images[upgrade_id] = self._scale_card_image(
+                    source,
+                    (image_area, image_area),
+                )
 
         # Mini-game layout
         switcher_w = min(
@@ -486,6 +563,21 @@ class MenuManager:
             pygame.draw.rect(screen, fill, rect)
             pygame.draw.rect(screen, border, rect, 1)
 
+            icon = self.building_images.get(building_id)
+            text_x = rect.x + 14
+
+            if icon:
+                icon_rect = icon.get_rect()
+                icon_rect.left = rect.x + 8
+                icon_rect.centery = rect.centery
+                screen.blit(icon, icon_rect)
+                text_x = icon_rect.right + 10
+            else:
+                placeholder = pygame.Rect(rect.x + 8, rect.y + 8, 48, rect.height - 16)
+                pygame.draw.rect(screen, (180, 180, 180), placeholder, border_radius=6)
+                pygame.draw.rect(screen, border, placeholder, 1, border_radius=6)
+                text_x = placeholder.right + 10
+
             title = self.section_font.render(building.get("name", building_id.title()), True, black)
             owned_text = self.body_font.render(f"Owned: {owned}", True, black)
             cps_text = self.small_font.render(
@@ -499,10 +591,10 @@ class MenuManager:
                 black,
             )
 
-            screen.blit(title, (rect.x + 14, rect.y + 10))
-            screen.blit(owned_text, (rect.x + 14, rect.y + 40))
-            screen.blit(cps_text, (rect.x + 14, rect.y + 64))
-            screen.blit(cost_text, (rect.x + 14, rect.y + 86))
+            screen.blit(title, (text_x, rect.y + 10))
+            screen.blit(owned_text, (text_x, rect.y + 40))
+            screen.blit(cps_text, (text_x, rect.y + 64))
+            screen.blit(cost_text, (text_x, rect.y + 86))
 
         coming_bg = getattr(settings, "BUILDING_DISABLED_BG", (218, 218, 218))
         if self.empty_building_card.bottom <= self.left_panel.bottom:
@@ -610,6 +702,22 @@ class MenuManager:
             pygame.draw.rect(screen, fill_color, rect, border_radius=8)
             pygame.draw.rect(screen, border, rect, 1, border_radius=8)
 
+            icon = self.upgrade_images.get(upgrade_id)
+            text_x = rect.x + 10
+
+            if icon:
+                icon_rect = icon.get_rect()
+                icon_rect.left = rect.x + 8
+                icon_rect.centery = rect.centery
+                screen.blit(icon, icon_rect)
+                text_x = icon_rect.right + 10
+            else:
+                placeholder_size = rect.height - 12
+                placeholder = pygame.Rect(rect.x + 8, rect.y + 6, placeholder_size, placeholder_size)
+                pygame.draw.rect(screen, (180, 180, 180), placeholder, border_radius=6)
+                pygame.draw.rect(screen, border, placeholder, 1, border_radius=6)
+                text_x = placeholder.right + 10
+
             name_font = self.body_font if rect.height >= 58 else self.small_font
             primary_text_color = black if unlocked else locked_text_color
             detail_color = black if unlocked else locked_text_color
@@ -617,7 +725,7 @@ class MenuManager:
             name_text = name_font.render(upgrade["name"], True, primary_text_color)
             level_text = self.small_font.render(f"Lv. {level}", True, primary_text_color)
 
-            screen.blit(name_text, (rect.x + 10, rect.y + 6))
+            screen.blit(name_text, (text_x, rect.y + 6))
             screen.blit(level_text, (rect.right - level_text.get_width() - 10, rect.y + 8))
 
             if unlocked:
@@ -633,7 +741,7 @@ class MenuManager:
                     detail_color,
                 )
 
-            screen.blit(detail_text, (rect.x + 10, rect.bottom - detail_text.get_height() - 6))
+            screen.blit(detail_text, (text_x, rect.bottom - detail_text.get_height() - 6))
 
     def _draw_button(self, screen, rect, label, enabled, force_color=None):
         button_bg = getattr(settings, "BUTTON_BG", (25, 124, 214))
