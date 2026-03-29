@@ -37,7 +37,7 @@ BUILDING_IMAGE_FILES = {
 UPGRADE_IMAGE_FILES = {
     "redit bots": "Karma_farms.webp",
     "Gaming PC": "OverClock.webp",
-    "Cardboard Cutout": "cardboard.webp",
+    "Cardboard Cutout": "NSFW.webp",
     "global_boost": "All_a_man_needs.webp",
     "Fast Food": "Chicken_nuggies.webp",
     "Mtn Dew": "Mtn_dew.webp",
