@@ -49,12 +49,25 @@ UPGRADES = {
         "target": "bot",
         "value": 2.0
     },
+    "factory_double": {
+        "name": "Factory Boost",
+        "cost": 3000,
+        "type": "building_multiplier",
+        "target": "factory",
+        "value": 2.0
+    },
     "global_boost": {
         "name": "Global Boost",
         "cost": 1000,
         "type": "global_multiplier",
         "value": 1.5
     }
+}
+
+BUILDING_UPGRADE_MAP = {
+    "poster": "poster_double",
+    "bot": "bot_double",
+    "factory": "factory_double",
 }
 
 # -----------------------------
