@@ -1,13 +1,15 @@
+import pygame
+
 # Screen Configuration
 SCREEN_WIDTH = 1280
 SCREEN_HEIGHT = 720
 FPS = 60
-
+ 
 # Colors (R, G, B)
 WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
-GRAY = (214, 214, 214)
-BLUE = (0, 121, 211)
+GRAY = (200, 200, 200)
+BLUE = (0, 121, 211)  # Reddit-ish Blue
 LIGHT_BLUE = (148, 197, 255)
 DARK_GRAY = (80, 80, 80)
 PANEL_BORDER = (110, 110, 110)
@@ -19,23 +21,45 @@ BUTTON_DISABLED = (145, 164, 184)
 BUTTON_BG = BLUE
 UPGRADE_OWNED = (60, 160, 90)
 
-# Main click image
-POST_BUTTON_WIDTH = 300
-POST_BUTTON_HEIGHT = 200
-POST_FONT_SIZE = 36
-
-# Layout
-OUTER_MARGIN = 16
-PANEL_GAP = 16
-LEFT_PANEL_WIDTH = 260
-RIGHT_PANEL_WIDTH = 260
-CENTER_TOP_INFO_HEIGHT = 120
-RIGHT_TOP_HEIGHT = 280
-CARD_GAP = 12
-SIDEBAR_CARD_HEIGHT = 150
-UPGRADE_CARD_HEIGHT = 60
-
-# Generic UI
-BUTTON_WIDTH = 200
-BUTTON_HEIGHT = 50
+# UI Settings
+POST_BUTTON_WIDTH = 200
+POST_BUTTON_HEIGHT = 50
 FONT_SIZE = 36
+
+# Screen Division Logic
+THIRD_WIDTH = SCREEN_WIDTH // 3
+
+# Column X-coordinates maY NOT NEED 
+# LEFT_COLUMN_X = 0
+# CENTER_COLUMN_X = THIRD_WIDTH
+# RIGHT_COLUMN_X = THIRD_WIDTH * 2
+
+# --- Flexible Column Widths ---
+# Define exactly how wide you want the side columns to be
+LEFT_COL_WIDTH = 300   # e.g., for Stats/Inventory
+RIGHT_COL_WIDTH = 400  # e.g., for a Shop or Log
+
+# The Center column takes whatever is left
+CENTER_COL_WIDTH = SCREEN_WIDTH - (LEFT_COL_WIDTH + RIGHT_COL_WIDTH)
+
+# --- Column X-coordinates (Starting points) ---
+LEFT_COLUMN_X = 0
+CENTER_COLUMN_X = LEFT_COL_WIDTH
+RIGHT_COLUMN_X = LEFT_COL_WIDTH + CENTER_COL_WIDTH
+# --- Dynamic Column Logic ---
+# We use a function so we can call it whenever the window size changes
+def get_column_layout(current_width):
+    # You can keep these fixed, or make them percentages
+    left_w = 300  
+    right_w = 400
+    center_w = current_width - (left_w + right_w)
+    
+    # Return a dictionary of coordinates and widths
+    return {
+        "left_x": 0,
+        "left_w": left_w,
+        "center_x": left_w,
+        "center_w": center_w,
+        "right_x": left_w + center_w,
+        "right_w": right_w
+    }
