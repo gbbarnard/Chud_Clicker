@@ -29,7 +29,7 @@ BUILDINGS = {
     },
     "Fast Food": {
         "name": "Fast Food",
-        "base_cost": 1000000,
+        "base_cost": 67676,
         "base_cps": 8.0,
         "cost_growth": 2.0,
         "cps_growth": 1.08,
