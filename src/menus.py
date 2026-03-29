@@ -34,11 +34,12 @@ BUILDING_IMAGE_FILES = {
 UPGRADE_IMAGE_FILES = {
     "redit bots": "Karma_farms.webp",
     "Gaming PC": "OverClock.webp",
-    "Waifu": "Waifu.webp",
+    "Cardboard Cutout": "NSFW.webp",
     "global_boost": "All_a_man_needs.webp",
     "Fast Food": "Chicken_nuggies.webp",
     "Mtn Dew": "Mtn_dew.webp",
     "Mini Game": "Gamer_leans.webp",
+    
 }
 
 
@@ -121,6 +122,14 @@ class MenuManager:
 
         self.hovered_building_id = None
         self.hovered_upgrade_id = None
+
+        self.music_button_rect = pygame.Rect(0, 0, 0, 0)
+
+        # Upgrade scroll state
+        self.upgrade_scroll_offset = 0
+        self.upgrade_scroll_speed = 36
+        self.upgrade_content_height = 0
+        self.upgrade_viewport_rect = pygame.Rect(0, 0, 0, 0)
 
         self._load_assets()
         self.update_layout(
@@ -305,20 +314,34 @@ class MenuManager:
                 (post_w, post_h),
             )
 
+        music_btn_size = max(30, min(42, width // 30))
+        screen_margin = 14
+        self.music_button_rect = pygame.Rect(
+            screen_margin,
+            height - music_btn_size - screen_margin,
+            music_btn_size,
+            music_btn_size,
+        )
+
         self.upgrade_cards = {}
 
         inner_pad = max(8, self.right_panel_top.width // 22)
         title_space = self.title_font.get_height() + 26
-        upgrade_gap = max(6, height // 120)
+        upgrade_gap = max(8, height // 110)
 
         upgrade_x = self.right_panel_top.x + inner_pad
         upgrade_y = self.right_panel_top.y + title_space
         upgrade_w = self.right_panel_top.width - (inner_pad * 2)
 
-        slots = max(1, len(self.upgrade_order))
-        available_h = self.right_panel_top.height - title_space - inner_pad
-        upgrade_card_h = (available_h - (upgrade_gap * (slots - 1))) // slots
-        upgrade_card_h = max(42, min(upgrade_card_h, 84))
+        # Bigger upgrade cards
+        upgrade_card_h = max(88, min(110, self.right_panel_top.height // 4))
+
+        self.upgrade_viewport_rect = pygame.Rect(
+            upgrade_x,
+            upgrade_y,
+            upgrade_w,
+            self.right_panel_top.bottom - upgrade_y - inner_pad,
+        )
 
         for idx, upgrade_id in enumerate(self.upgrade_order):
             rect = pygame.Rect(
@@ -328,6 +351,14 @@ class MenuManager:
                 upgrade_card_h,
             )
             self.upgrade_cards[upgrade_id] = rect
+
+        self.upgrade_content_height = 0
+        if self.upgrade_order:
+            last_rect = self.upgrade_cards[self.upgrade_order[-1]]
+            self.upgrade_content_height = last_rect.bottom - upgrade_y
+
+        max_scroll = max(0, self.upgrade_content_height - self.upgrade_viewport_rect.height)
+        self.upgrade_scroll_offset = max(0, min(self.upgrade_scroll_offset, max_scroll))
 
         self.building_images = {}
         for building_id, rect in self.building_cards.items():
@@ -344,7 +375,7 @@ class MenuManager:
         for upgrade_id, rect in self.upgrade_cards.items():
             source = self.upgrade_source_images.get(upgrade_id)
             if source:
-                image_area = rect.height - 12
+                image_area = rect.height - 14
                 self.upgrade_images[upgrade_id] = self._scale_card_image(
                     source,
                     (image_area, image_area),
@@ -407,6 +438,25 @@ class MenuManager:
         )
 
     def handle_event(self, event):
+        if event.type == pygame.MOUSEWHEEL:
+            mouse_pos = pygame.mouse.get_pos()
+            if self.upgrade_viewport_rect.collidepoint(mouse_pos):
+                max_scroll = max(0, self.upgrade_content_height - self.upgrade_viewport_rect.height)
+                self.upgrade_scroll_offset -= event.y * self.upgrade_scroll_speed
+                self.upgrade_scroll_offset = max(0, min(self.upgrade_scroll_offset, max_scroll))
+                return
+
+        if event.type == pygame.MOUSEBUTTONDOWN:
+            if self.upgrade_viewport_rect.collidepoint(event.pos):
+                max_scroll = max(0, self.upgrade_content_height - self.upgrade_viewport_rect.height)
+
+                if event.button == 4:  # scroll up
+                    self.upgrade_scroll_offset = max(0, self.upgrade_scroll_offset - self.upgrade_scroll_speed)
+                    return
+                elif event.button == 5:  # scroll down
+                    self.upgrade_scroll_offset = min(max_scroll, self.upgrade_scroll_offset + self.upgrade_scroll_speed)
+                    return
+
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if self.btn_flip_tab.collidepoint(event.pos):
                 self.active_minigame = "coin_flip"
@@ -467,6 +517,10 @@ class MenuManager:
                         return
 
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if self.music_button_rect.collidepoint(event.pos):
+                self.game.music_muted = not self.game.music_muted
+                return
+
             if self.click_button_rect.collidepoint(event.pos):
                 add_manual_click(self.game)
                 return
@@ -477,7 +531,11 @@ class MenuManager:
                     return
 
             for upgrade_id, rect in self.upgrade_cards.items():
-                if rect.collidepoint(event.pos):
+                draw_rect = rect.move(0, -self.upgrade_scroll_offset)
+                if (
+                    self.upgrade_viewport_rect.colliderect(draw_rect)
+                    and draw_rect.collidepoint(event.pos)
+                ):
                     buy_upgrade(self.game, upgrade_id)
                     return
 
@@ -491,7 +549,11 @@ class MenuManager:
                     return
 
             for upgrade_id, rect in self.upgrade_cards.items():
-                if rect.collidepoint(event.pos):
+                draw_rect = rect.move(0, -self.upgrade_scroll_offset)
+                if (
+                    self.upgrade_viewport_rect.colliderect(draw_rect)
+                    and draw_rect.collidepoint(event.pos)
+                ):
                     self.hovered_upgrade_id = upgrade_id
                     return
 
@@ -662,6 +724,21 @@ class MenuManager:
         )
         screen.blit(help_text, help_rect)
 
+        button_bg = getattr(settings, "MUSIC_BUTTON_BG", (245, 245, 245))
+        button_muted_bg = getattr(settings, "MUSIC_BUTTON_MUTED_BG", (200, 160, 160))
+        button_border = getattr(settings, "MUSIC_BUTTON_BORDER", (110, 110, 110))
+
+        is_muted = self.game.music_muted
+        fill = button_muted_bg if is_muted else button_bg
+
+        pygame.draw.rect(screen, fill, self.music_button_rect, border_radius=8)
+        pygame.draw.rect(screen, button_border, self.music_button_rect, 1, border_radius=8)
+
+        icon_text = "M" if not is_muted else "X"
+        icon = self.body_font.render(icon_text, True, black)
+        icon_rect = icon.get_rect(center=self.music_button_rect.center)
+        screen.blit(icon, icon_rect)
+
     def _draw_upgrade_panel(self, screen):
         black = getattr(settings, "BLACK", (0, 0, 0))
         card_bg = getattr(settings, "CARD_BG", (255, 255, 255))
@@ -673,8 +750,17 @@ class MenuManager:
         title = self.title_font.render("Upgrades", True, black)
         screen.blit(title, (self.right_panel_top.x + 18, self.right_panel_top.y + 14))
 
+        viewport = self.upgrade_viewport_rect
+        old_clip = screen.get_clip()
+        screen.set_clip(viewport)
+
         for upgrade_id in self.upgrade_order:
-            rect = self.upgrade_cards[upgrade_id]
+            base_rect = self.upgrade_cards[upgrade_id]
+            rect = base_rect.move(0, -self.upgrade_scroll_offset)
+
+            if rect.bottom < viewport.top or rect.top > viewport.bottom:
+                continue
+
             upgrade = UPGRADES[upgrade_id]
 
             level = self.game.upgrades_owned[upgrade_id]
@@ -712,36 +798,61 @@ class MenuManager:
                 screen.blit(icon, icon_rect)
                 text_x = icon_rect.right + 10
             else:
-                placeholder_size = rect.height - 12
-                placeholder = pygame.Rect(rect.x + 8, rect.y + 6, placeholder_size, placeholder_size)
+                placeholder_size = rect.height - 14
+                placeholder = pygame.Rect(rect.x + 8, rect.y + 7, placeholder_size, placeholder_size)
                 pygame.draw.rect(screen, (180, 180, 180), placeholder, border_radius=6)
                 pygame.draw.rect(screen, border, placeholder, 1, border_radius=6)
                 text_x = placeholder.right + 10
 
-            name_font = self.body_font if rect.height >= 58 else self.small_font
-            primary_text_color = black if unlocked else locked_text_color
-            detail_color = black if unlocked else locked_text_color
+            name_text = self.body_font.render(upgrade["name"], True, black if unlocked else locked_text_color)
+            level_text = self.small_font.render(f"Lv. {level}", True, black if unlocked else locked_text_color)
 
-            name_text = name_font.render(upgrade["name"], True, primary_text_color)
-            level_text = self.small_font.render(f"Lv. {level}", True, primary_text_color)
-
-            screen.blit(name_text, (text_x, rect.y + 6))
-            screen.blit(level_text, (rect.right - level_text.get_width() - 10, rect.y + 8))
+            screen.blit(name_text, (text_x, rect.y + 10))
+            screen.blit(level_text, (rect.right - level_text.get_width() - 10, rect.y + 12))
 
             if unlocked:
                 detail_text = self.small_font.render(
                     f"Next cost: {format_chud_amount(cost)}",
                     True,
-                    detail_color,
+                    black,
                 )
             else:
                 detail_text = self.small_font.render(
                     f"Need: {required_name}",
                     True,
-                    detail_color,
+                    locked_text_color,
                 )
 
-            screen.blit(detail_text, (text_x, rect.bottom - detail_text.get_height() - 6))
+            screen.blit(detail_text, (text_x, rect.bottom - detail_text.get_height() - 10))
+
+        screen.set_clip(old_clip)
+
+        if self.upgrade_content_height > self.upgrade_viewport_rect.height:
+            track_rect = pygame.Rect(
+                self.upgrade_viewport_rect.right - 6,
+                self.upgrade_viewport_rect.top,
+                6,
+                self.upgrade_viewport_rect.height,
+            )
+            pygame.draw.rect(screen, (190, 190, 190), track_rect, border_radius=4)
+
+            thumb_height = max(
+                30,
+                int(
+                    self.upgrade_viewport_rect.height
+                    * (self.upgrade_viewport_rect.height / self.upgrade_content_height)
+                )
+            )
+            max_scroll = self.upgrade_content_height - self.upgrade_viewport_rect.height
+            thumb_y = track_rect.y
+            if max_scroll > 0:
+                thumb_y += int(
+                    (self.upgrade_scroll_offset / max_scroll)
+                    * (track_rect.height - thumb_height)
+                )
+
+            thumb_rect = pygame.Rect(track_rect.x, thumb_y, track_rect.width, thumb_height)
+            pygame.draw.rect(screen, (110, 110, 110), thumb_rect, border_radius=4)
 
     def _draw_button(self, screen, rect, label, enabled, force_color=None):
         button_bg = getattr(settings, "BUTTON_BG", (25, 124, 214))
@@ -779,7 +890,11 @@ class MenuManager:
         pygame.draw.rect(screen, border, self.btn_speed_tab, 1, border_radius=8)
 
         flip_text = self.button_font.render("C", True, white)
-        speed_text = self.button_font.render("S", True, black if self.active_minigame == "speed_click" else white)
+        speed_text = self.button_font.render(
+            "S",
+            True,
+            black if self.active_minigame == "speed_click" else white
+        )
         screen.blit(flip_text, flip_text.get_rect(center=self.btn_flip_tab.center))
         screen.blit(speed_text, speed_text.get_rect(center=self.btn_speed_tab.center))
 

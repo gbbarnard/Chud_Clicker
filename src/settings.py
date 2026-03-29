@@ -21,6 +21,10 @@ BUTTON_DISABLED = (145, 164, 184)
 BUTTON_BG = BLUE
 UPGRADE_OWNED = (60, 160, 90)
 
+MUSIC_BUTTON_BG = (245, 245, 245)
+MUSIC_BUTTON_MUTED_BG = (200, 160, 160)
+MUSIC_BUTTON_BORDER = (110, 110, 110)
+
 # Added from second file
 UPGRADE_LOCKED_BG = (228, 190, 190)
 UPGRADE_LOCKED_TEXT = (120, 45, 45)
@@ -69,3 +73,8 @@ def get_column_layout(current_width):
         "right_x": left_w + center_w,
         "right_w": right_w
     }
+    
+    # Music Settings
+MUSIC_ENABLED = True
+MUSIC_VOLUME = 0.35
+MUSIC_CLIP_SECONDS = 30

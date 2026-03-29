@@ -73,7 +73,7 @@ UPGRADES = {
         "required_building": "Gaming Pc",
         "value": 2.0,
     },
-    "Waifu": {
+    "Cardboard Cutout": {
         "name": "Cardboard Cutout",
         "base_cost": 500,
         "cost_growth": 1.15,
@@ -178,6 +178,7 @@ class GameState:
     buildings_owned: dict = field(default_factory=lambda: {building_id: 0 for building_id in BUILDINGS})
     upgrades_owned: dict = field(default_factory=lambda: {upgrade_id: 0 for upgrade_id in UPGRADES})
     total_cps: float = 0.0
+    music_muted: bool = False
 
 
 # -----------------------------
